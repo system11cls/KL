@@ -12,141 +12,167 @@ class CipherApi:
         self.driver.close()
 
     def get_all_nodes_and_arcs(self):
-        with self.driver.session() as session:
-            result = session.run("""
-            MATCH (n)
-            CALL (n) {
-                OPTIONAL MATCH (n)-[r]->()
-                RETURN r
-            }
-            RETURN n, collect(r) as relations
-            """)
-            data = list(result)
-            res = []
-            for record in data:
-                node = CipherTools.collect_node(record["n"])
-                arcs = record["relations"]
-                arcs_list = []
-                for arc in list(arcs):
-                    arcs_list.append(CipherTools.collect_arc(arc))
-                res.append((node, arcs_list))
-            return res
+        return self.__executor(self.__get_all_nodes_and_arcs_func)
 
     def get_nodes_by_labels(self, labels: [str]):
-        label = CipherTools.transform_labels(labels)
-        with self.driver.session() as session:
-            result = session.run(f"""
-            MATCH (n{label})
-            RETURN n
-            """)
-
-            data = list(result)
-            res = []
-            for record in data:
-                res.append(CipherTools.collect_node(record["n"]))
-            return res
-
+        return self.__executor(self.__get_nodes_by_labels_func, labels)
 
     def  get_node_by_uri(self, uri:str):
-        with self.driver.session() as session:
-            result = session.run(f"""
-            MATCH (n)
-            WHERE elementId(n) = \"{uri}\"
-            return n
-            """)
-            data = result.single()
-            if data is None:
-                return None
-            return CipherTools.collect_node(data["n"])
+        return self.__executor(self.__get_node_by_uri_func, uri)
 
     def get_node_arcs(self, node_uri:str):
-        with self.driver.session() as session:
-            result = session.run(f"""
-            OPTIONAL MATCH (n)-[l]->()
-            WHERE elementId(n) = \"{node_uri}\"
-            RETURN collect(l) as arcs
-""")
-            data = result.single()
-            if data is None:
-                return []
-            arcs = data["arcs"]
-            res = []
-            for record in arcs:
-                res.append(CipherTools.collect_arc(record))
-            return res
+        return self.__executor(self.__get_node_arcs_func, node_uri)
 
     def create_node(self, labels:[str], props:dict):
-        label = CipherTools.transform_labels(labels)
-        properties = CipherTools.transform_props(props)
-        with self.driver.session() as session:
-            result = session.run(f"""
-            CREATE (n{label} {properties})
-            RETURN n
-            """)
-            data = result.single()
-            if data is None:
-                return None
-            return CipherTools.collect_node(data["n"])
+        return self.__executor(self.__create_node_func, labels, props)
 
     def create_arc(self, uri_from:str, uri_to:str, labels:[str], props:dict):
-        label = CipherTools.transform_labels(labels)
-        properties = CipherTools.transform_props(props)
-        with self.driver.session() as session:
-            result = session.run(f"""
-            MATCH (n), (t)
-            WHERE elementId(n) = \"{uri_from}\" AND elementId(t) = \"{uri_to}\"
-            CREATE (n)-[l{label} {properties}]->(t)
-            RETURN l
-            """)
-            data = result.single()
-            if data is None:
-                return None
-            return CipherTools.collect_arc(data["l"])
+        return self.__executor(self.__create_arc_func, uri_from, uri_to, labels, props)
 
     def delete_node_by_uri(self, node_uri):
-        with self.driver.session() as session:
-            result = session.run(f"""
-            OPTIONAL MATCH (n)
-            WHERE elementId(n) = \"{node_uri}\"
-            OPTIONAL MATCH (n)-[l]-()
-            DETACH DELETE n, l
-            RETURN COUNT(n) as deleted
-""")
-            data = result.single()
-            return data["deleted"]
+        return self.__executor(self.__delete_node_by_uri_func, node_uri)
 
     def delete_arc_by_id(self, arc_uri:str):
-        with self.driver.session() as session:
-            result = session.run(f"""
-            OPTIONAL MATCH ()-[l]->()
-            WHERE elementId(l) = \"{arc_uri}\"
-            DELETE l
-            RETURN COUNT(l) as deleted
-""")
-            data = result.single()
-            return data["deleted"]
+        return self.__executor(self.__delete_arc_by_id_func, arc_uri)
 
     def update_node(self, node_uri: str, params: dict):
+        return self.__executor(self.update_node, node_uri, params)
+
+    def __executor(self, func_to_exec, *args, **kwargs):
+        with self.driver.session() as session:
+            return func_to_exec(session, *args, **kwargs)
+
+    def __get_all_nodes_and_arcs_func(self, session):
+        result = session.run("""
+        MATCH (n)
+        CALL (n) {
+            OPTIONAL MATCH (n)-[r]->()
+            RETURN r
+        }
+        RETURN n, collect(r) as relations
+        """)
+
+        data = list(result)
+        res = []
+        for record in data:
+            node = CipherTools.collect_node(record["n"])
+            arcs = record["relations"]
+            arcs_list = []
+            for arc in list(arcs):
+                arcs_list.append(CipherTools.collect_arc(arc))
+            res.append((node, arcs_list))
+        return res
+
+    def __get_nodes_by_labels_func(self, session, labels: [str]):
+
+        label = CipherTools.transform_labels(labels)
+        result = session.run(f"""
+        MATCH (n{label})
+        RETURN n
+        """)
+
+        data = list(result)
+        res = []
+        for record in data:
+            res.append(CipherTools.collect_node(record["n"]))
+        return res
+
+    def __get_node_by_uri_func(self, session, uri:str):
+        result = session.run(f"""
+        MATCH (n)
+        WHERE elementId(n) = \"{uri}\"
+        return n
+        """)
+        data = result.single()
+        if data is None:
+            return None
+        return CipherTools.collect_node(data["n"])
+
+    def __get_node_arcs_func(self, session, node_uri:str):
+        result = session.run(f"""
+        OPTIONAL MATCH (n)-[l]->()
+        WHERE elementId(n) = \"{node_uri}\"
+        RETURN collect(l) as arcs
+""")
+        data = result.single()
+        if data is None:
+            return []
+        arcs = data["arcs"]
+        res = []
+        for record in arcs:
+            res.append(CipherTools.collect_arc(record))
+        return res
+
+    def __create_node_func(self, session, labels:[str], props:dict):
+        label = CipherTools.transform_labels(labels)
+        properties = CipherTools.transform_props(props)
+        result = session.run(f"""
+        CREATE (n{label} {properties})
+        RETURN n
+        """)
+        data = result.single()
+        if data is None:
+            return None
+        return CipherTools.collect_node(data["n"])
+
+    def __create_arc_func(self, session, uri_from:str, uri_to:str, labels:[str], props:dict):
+        label = CipherTools.transform_labels(labels)
+        properties = CipherTools.transform_props(props)
+
+        result = session.run(f"""
+        MATCH (n), (t)
+        WHERE elementId(n) = \"{uri_from}\" AND elementId(t) = \"{uri_to}\"
+        CREATE (n)-[l{label} {properties}]->(t)
+        RETURN l
+        """)
+        data = result.single()
+        if data is None:
+            return None
+        return CipherTools.collect_arc(data["l"])
+
+    def __delete_node_by_uri_func(self, session, node_uri):
+
+        result = session.run(f"""
+        OPTIONAL MATCH (n)
+        WHERE elementId(n) = \"{node_uri}\"
+        OPTIONAL MATCH (n)-[l]-()
+        DETACH DELETE n, l
+        RETURN COUNT(n) as deleted
+""")
+        data = result.single()
+        return data["deleted"]
+
+    def __delete_arc_by_id_func(self, session, arc_uri:str):
+
+        result = session.run(f"""
+        OPTIONAL MATCH ()-[l]->()
+        WHERE elementId(l) = \"{arc_uri}\"
+        DELETE l
+        RETURN COUNT(l) as deleted
+""")
+        data = result.single()
+        return data["deleted"]
+
+    def __update_node_func(self, session, node_uri: str, params: dict):
 
         pairs = []
         for key, value in params.items():
             pairs.append(f'n.{key}="{value}"')
         properties = ", ".join(pairs)
 
-        with self.driver.session() as session:
-            result = session.run(f"""
-            MATCH (n)
-            WHERE elementId(n) = \"{node_uri}\"
-            SET {properties}
-            RETURN "Ok" as status
+
+        result = session.run(f"""
+        MATCH (n)
+        WHERE elementId(n) = \"{node_uri}\"
+        SET {properties}
+        RETURN "Ok" as status
 """)
-            data = result.single()
-            if data is None:
-                return None
-            return "OK"
+        data = result.single()
+        if data is None:
+            return None
+        return "OK"
 
 class CipherTools:
-
 
     @staticmethod
     def generate_random_string(length=64):
