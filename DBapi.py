@@ -2,6 +2,7 @@ import json
 from neo4j import GraphDatabase
 from string import ascii_lowercase, digits
 from random import choice
+from typing import List
 
 class CipherApi:
 
@@ -11,31 +12,31 @@ class CipherApi:
     def close(self):
         self.driver.close()
 
-    def get_all_nodes_and_arcs(self):
+    def get_all_nodes_and_arcs(self) -> List[(TNode, [TArc])]:
         return self.__executor(self.__get_all_nodes_and_arcs_func)
 
-    def get_nodes_by_labels(self, labels: [str]):
+    def get_nodes_by_labels(self, labels: List[str]) -> List[TNode]:
         return self.__executor(self.__get_nodes_by_labels_func, labels)
 
-    def  get_node_by_uri(self, uri:str):
+    def  get_node_by_uri(self, uri:str) -> TNode:
         return self.__executor(self.__get_node_by_uri_func, uri)
 
-    def get_node_arcs(self, node_uri:str):
+    def get_node_arcs(self, node_uri:str) -> List[TArc]:
         return self.__executor(self.__get_node_arcs_func, node_uri)
 
-    def create_node(self, labels:[str], props:dict):
+    def create_node(self, labels: List[str], props:dict) -> TNode:
         return self.__executor(self.__create_node_func, labels, props)
 
-    def create_arc(self, uri_from:str, uri_to:str, labels:[str], props:dict):
+    def create_arc(self, uri_from:str, uri_to:str, labels: List[str], props:dict) -> TArc:
         return self.__executor(self.__create_arc_func, uri_from, uri_to, labels, props)
 
-    def delete_node_by_uri(self, node_uri):
+    def delete_node_by_uri(self, node_uri) -> int:
         return self.__executor(self.__delete_node_by_uri_func, node_uri)
 
-    def delete_arc_by_id(self, arc_uri:str):
+    def delete_arc_by_id(self, arc_uri:str) -> int:
         return self.__executor(self.__delete_arc_by_id_func, arc_uri)
 
-    def update_node(self, node_uri: str, params: dict):
+    def update_node(self, node_uri: str, params: dict) -> int:
         return self.__executor(self.update_node, node_uri, params)
 
     def __executor(self, func_to_exec, *args, **kwargs):
@@ -63,7 +64,7 @@ class CipherApi:
             res.append((node, arcs_list))
         return res
 
-    def __get_nodes_by_labels_func(self, session, labels: [str]):
+    def __get_nodes_by_labels_func(self, session, labels: List[str]):
 
         label = CipherTools.transform_labels(labels)
         result = session.run(f"""
@@ -103,7 +104,7 @@ class CipherApi:
             res.append(CipherTools.collect_arc(record))
         return res
 
-    def __create_node_func(self, session, labels:[str], props:dict):
+    def __create_node_func(self, session, labels: List[str], props:dict):
         label = CipherTools.transform_labels(labels)
         properties = CipherTools.transform_props(props)
         result = session.run(f"""
@@ -115,7 +116,7 @@ class CipherApi:
             return None
         return CipherTools.collect_node(data["n"])
 
-    def __create_arc_func(self, session, uri_from:str, uri_to:str, labels:[str], props:dict):
+    def __create_arc_func(self, session, uri_from:str, uri_to:str, labels: List[str], props:dict):
         label = CipherTools.transform_labels(labels)
         properties = CipherTools.transform_props(props)
 
@@ -228,11 +229,11 @@ class CipherTools:
 class TNode:
     uri:str
     description:str
-    label:[str]
+    label: List[str]
     properties : dict
 
 
-    def __init__(self, uri:str, desc:str, label:[str], properties:dict):
+    def __init__(self, uri:str, desc:str, label: List[str], properties:dict):
         self.uri = uri
         self.description = desc
         self.label = label
