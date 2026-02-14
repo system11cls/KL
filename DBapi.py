@@ -9,7 +9,7 @@ class CipherApi:
     def __init__(self, addr, name, password):
         self.driver = GraphDatabase.driver(addr, auth=(name, password))
 
-    def close(self):
+    def __del__(self):
         self.driver.close()
 
     def get_all_nodes_and_arcs(self) -> List[(TNode, [TArc])]:
