@@ -40,8 +40,13 @@ class CipherApi:
         return self.__executor(self.update_node, node_uri, params)
 
     def __executor(self, func_to_exec, *args, **kwargs):
-        with self.driver.session() as session:
-            return func_to_exec(session, *args, **kwargs)
+        try:
+            with self.driver.session() as session:
+                return func_to_exec(session, *args, **kwargs)
+        except Exception as e:
+            print("Query failed:", e)
+        finally:
+            self.driver.session().close()
 
     def __get_all_nodes_and_arcs_func(self, session):
         result = session.run("""
