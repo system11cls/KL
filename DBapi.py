@@ -2,7 +2,46 @@ import json
 from neo4j import GraphDatabase
 from string import ascii_lowercase, digits
 from random import choice
-from typing import List
+from typing import List, Tuple
+
+class TNode:
+    uri:str
+    description:str
+    label: List[str]
+    properties : dict
+
+
+    def __init__(self, uri:str, desc:str, label: List[str], properties:dict):
+        self.uri = uri
+        self.description = desc
+        self.label = label
+        self.properties = properties
+
+    def __str__(self):
+        return (f'[node_uri = {self.uri},'
+                f'  node_desc = {self.description},'
+                f'  node_labels = {self.label},'
+                f'  {self.properties}]')
+
+class TArc:
+    id: int
+    uri: str
+    label: str
+    node_uri_from: str
+    node_uri_to: str
+    properties:dict
+
+    def __init__(self, id:int, uri:str, label:str, uri_from:str, uri_to:str, properties:dict):
+        self.id = id
+        self.uri = uri
+        self.label = label
+        self.node_uri_from = uri_from
+        self.node_uri_to = uri_to
+        self.properties = properties
+
+    def __str__(self):
+        return f'[id = {self.id}  uri = {self.uri}  label = {self.label}  node_from = {self.node_uri_from} node_to = {self.node_uri_to}  {self.properties}]'
+
 
 class CipherApi:
 
@@ -12,7 +51,7 @@ class CipherApi:
     def __del__(self):
         self.driver.close()
 
-    def get_all_nodes_and_arcs(self) -> List[(TNode, [TArc])]:
+    def get_all_nodes_and_arcs(self) -> List[Tuple[TNode, List[TArc]]]:
         return self.__executor(self.__get_all_nodes_and_arcs_func)
 
     def get_nodes_by_labels(self, labels: List[str]) -> List[TNode]:
@@ -37,7 +76,7 @@ class CipherApi:
         return self.__executor(self.__delete_arc_by_id_func, arc_uri)
 
     def update_node(self, node_uri: str, params: dict) -> int:
-        return self.__executor(self.update_node, node_uri, params)
+        return self.__executor(self.__update_node_func, node_uri, params)
 
     def __executor(self, func_to_exec, *args, **kwargs):
         try:
@@ -231,40 +270,3 @@ class CipherTools:
         data += "}"
         return data
 
-class TNode:
-    uri:str
-    description:str
-    label: List[str]
-    properties : dict
-
-
-    def __init__(self, uri:str, desc:str, label: List[str], properties:dict):
-        self.uri = uri
-        self.description = desc
-        self.label = label
-        self.properties = properties
-
-    def __str__(self):
-        return (f'[node_uri = {self.uri},'
-                f'  node_desc = {self.description},'
-                f'  node_labels = {self.label},'
-                f'  {self.properties}]')
-
-class TArc:
-    id: int
-    uri: str
-    label: str
-    node_uri_from: str
-    node_uri_to: str
-    properties:dict
-
-    def __init__(self, id:int, uri:str, label:str, uri_from:str, uri_to:str, properties:dict):
-        self.id = id
-        self.uri = uri
-        self.label = label
-        self.node_uri_from = uri_from
-        self.node_uri_to = uri_to
-        self.properties = properties
-
-    def __str__(self):
-        return f'[id = {self.id}  uri = {self.uri}  label = {self.label}  node_from = {self.node_uri_from} node_to = {self.node_uri_to}  {self.properties}]'
