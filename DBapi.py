@@ -135,7 +135,7 @@ class CipherApi:
 
     def __get_node_arcs_func(self, session, node_uri:str):
         result = session.run(f"""
-        OPTIONAL MATCH (n)-[l]->()
+        OPTIONAL MATCH (n)-[l]-()
         WHERE elementId(n) = \"{node_uri}\"
         RETURN collect(l) as arcs
 """)
