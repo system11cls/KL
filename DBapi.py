@@ -180,8 +180,7 @@ class CipherApi:
         result = session.run(f"""
         OPTIONAL MATCH (n)
         WHERE elementId(n) = \"{node_uri}\"
-        OPTIONAL MATCH (n)-[l]-()
-        DETACH DELETE n, l
+        DETACH DELETE n
         RETURN COUNT(n) as deleted
 """)
         data = result.single()
