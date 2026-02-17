@@ -16,6 +16,7 @@ class TNode:
         self.description = desc
         self.label = label
         self.properties = properties
+        self.properties.pop("uri")
 
     def __str__(self):
         return (f'[node_uri = {self.uri},'
@@ -38,6 +39,7 @@ class TArc:
         self.node_uri_from = uri_from
         self.node_uri_to = uri_to
         self.properties = properties
+        self.properties.pop("uri")
 
     def __str__(self):
         return f'[id = {self.id}  uri = {self.uri}  label = {self.label}  node_from = {self.node_uri_from} node_to = {self.node_uri_to}  {self.properties}]'
@@ -125,7 +127,7 @@ class CipherApi:
     def __get_node_by_uri_func(self, session, uri:str):
         result = session.run(f"""
         MATCH (n)
-        WHERE elementId(n) = \"{uri}\"
+        WHERE n.uri = \"{uri}\"
         return n
         """)
         data = result.single()
@@ -136,7 +138,7 @@ class CipherApi:
     def __get_node_arcs_func(self, session, node_uri:str):
         result = session.run(f"""
         OPTIONAL MATCH (n)-[l]-()
-        WHERE elementId(n) = \"{node_uri}\"
+        WHERE n.uri = \"{node_uri}\"
         RETURN collect(l) as arcs
 """)
         data = result.single()
@@ -149,6 +151,8 @@ class CipherApi:
         return res
 
     def __create_node_func(self, session, labels: List[str], props:dict):
+        uri = CipherTools.generate_random_string()
+        props["uri"] = uri
         label = CipherTools.transform_labels(labels)
         properties = CipherTools.transform_props(props)
         result = session.run(f"""
@@ -161,12 +165,14 @@ class CipherApi:
         return CipherTools.collect_node(data["n"])
 
     def __create_arc_func(self, session, uri_from:str, uri_to:str, labels: List[str], props:dict):
+        uri = CipherTools.generate_random_string()
+        props["uri"] = uri
         label = CipherTools.transform_labels(labels)
         properties = CipherTools.transform_props(props)
 
         result = session.run(f"""
         MATCH (n), (t)
-        WHERE elementId(n) = \"{uri_from}\" AND elementId(t) = \"{uri_to}\"
+        WHERE n.uri = \"{uri_from}\" AND t.uri = \"{uri_to}\"
         CREATE (n)-[l{label} {properties}]->(t)
         RETURN l
         """)
@@ -179,7 +185,7 @@ class CipherApi:
 
         result = session.run(f"""
         OPTIONAL MATCH (n)
-        WHERE elementId(n) = \"{node_uri}\"
+        WHERE n.uri = \"{node_uri}\"
         DETACH DELETE n
         RETURN COUNT(n) as deleted
 """)
@@ -190,7 +196,7 @@ class CipherApi:
 
         result = session.run(f"""
         OPTIONAL MATCH ()-[l]->()
-        WHERE elementId(l) = \"{arc_uri}\"
+        WHERE l.uri = \"{arc_uri}\"
         DELETE l
         RETURN COUNT(l) as deleted
 """)
@@ -207,7 +213,7 @@ class CipherApi:
 
         result = session.run(f"""
         MATCH (n)
-        WHERE elementId(n) = \"{node_uri}\"
+        WHERE n.uri = \"{node_uri}\"
         SET {properties}
         RETURN "Ok" as status
 """)
@@ -225,7 +231,7 @@ class CipherTools:
 
     @staticmethod
     def collect_node(node):
-        name = node.element_id
+        name = node["uri"]
         description = ""
         if node["description"]:
             description = node["description"]
@@ -235,7 +241,7 @@ class CipherTools:
     @staticmethod
     def collect_arc(arc):
         id = arc.id
-        uri = arc.element_id
+        uri = arc["uri"]
         nodes = arc.nodes
         label = arc.type
         uri_from = nodes[0].element_id
