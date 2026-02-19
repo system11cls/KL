@@ -54,7 +54,7 @@ class CipherApi:
     def get_all_nodes_and_arcs(self) -> List[Tuple[TNode, List[TArc]]]:
         return self.__executor(self.__get_all_nodes_and_arcs_func)
 
-    def get_nodes_by_labels(self, labels: List[str]) -> List[TNode]:
+    def get_nodes_by_labels(self, labels: List[str]) -> List[Tuple[TNode, List[TArc]]]:
         return self.__executor(self.__get_nodes_by_labels_func, labels)
 
     def  get_node_by_uri(self, uri:str) -> TNode:
@@ -62,6 +62,9 @@ class CipherApi:
 
     def get_node_arcs(self, node_uri:str) -> List[TArc]:
         return self.__executor(self.__get_node_arcs_func, node_uri)
+
+    def get_sons_nodes(self, node_uri:str) -> List[TNode]:
+
 
     def create_node(self, labels: List[str], props:dict) -> TNode:
         return self.__executor(self.__create_node_func, labels, props)
@@ -111,9 +114,13 @@ class CipherApi:
     def __get_nodes_by_labels_func(self, session, labels: List[str]):
 
         label = CipherTools.transform_labels(labels)
-        result = session.run(f"""
+        result = session.run("""
         MATCH (n{label})
-        RETURN n
+        CALL (n) {
+            OPTIONAL MATCH (n)-[r]->()
+            RETURN r
+        }
+        RETURN n, collect(r) as relations
         """)
 
         data = list(result)
@@ -147,6 +154,9 @@ class CipherApi:
         for record in arcs:
             res.append(CipherTools.collect_arc(record))
         return res
+
+    def __get_sons_node_func(self, session, node_uri):
+        result = session.run()
 
     def __create_node_func(self, session, labels: List[str], props:dict):
         label = CipherTools.transform_labels(labels)
