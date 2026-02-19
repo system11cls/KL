@@ -6,13 +6,15 @@ from typing import List, Tuple
 
 class TNode:
     uri:str
+    title:str
     description:str
     label: List[str]
     properties : dict
 
 
-    def __init__(self, uri:str, desc:str, label: List[str], properties:dict):
+    def __init__(self, uri:str, title:str, desc:str, label: List[str], properties:dict):
         self.uri = uri
+        self.title = title
         self.description = desc
         self.label = label
         self.properties = properties
@@ -48,10 +50,10 @@ class TArc:
 class CipherApi:
 
     def __init__(self, addr, name, password):
-        self.driver = GraphDatabase.driver(addr, auth=(name, password))
+        self.__driver = GraphDatabase.driver(addr, auth=(name, password))
 
     def __del__(self):
-        self.driver.close()
+        self.__driver.close()
 
     def get_all_nodes_and_arcs(self) -> List[Tuple[TNode, List[TArc]]]:
         return self.__executor(self.__get_all_nodes_and_arcs_func)
@@ -65,11 +67,14 @@ class CipherApi:
     def get_node_arcs(self, node_uri:str) -> List[TArc]:
         return self.__executor(self.__get_node_arcs_func, node_uri)
 
-    def get_sons_nodes(self, node_uri:str) -> List[TNode]:
+    def get_parent_nodes(self, node_uri:str, arc_label:str="") -> List[TNode]:
+        return self.__executor(self.__get_parent_nodes_func, node_uri, arc_label)
 
+    def get_sons_nodes(self, node_uri:str, arc_label:str="") -> List[TNode]:
+        return self.__executor(self.__get_sons_node_func, node_uri, arc_label)
 
-    def create_node(self, labels: List[str], props:dict) -> TNode:
-        return self.__executor(self.__create_node_func, labels, props)
+    def create_node(self, labels: List[str], props:dict, add_uri_to_labels:bool=False) -> TNode:
+        return self.__executor(self.__create_node_func, labels, props, add_uri_to_labels)
 
     def create_arc(self, uri_from:str, uri_to:str, labels: List[str], props:dict) -> TArc:
         return self.__executor(self.__create_arc_func, uri_from, uri_to, labels, props)
@@ -85,12 +90,12 @@ class CipherApi:
 
     def __executor(self, func_to_exec, *args, **kwargs):
         try:
-            with self.driver.session() as session:
+            with self.__driver.session() as session:
                 return func_to_exec(session, *args, **kwargs)
         except Exception as e:
             print("Query failed:", e)
         finally:
-            self.driver.session().close()
+            self.__driver.session().close()
 
     def __get_all_nodes_and_arcs_func(self, session):
         result = session.run("""
@@ -116,12 +121,12 @@ class CipherApi:
     def __get_nodes_by_labels_func(self, session, labels: List[str]):
 
         label = CipherTools.transform_labels(labels)
-        result = session.run("""
+        result = session.run(f"""
         MATCH (n{label})
-        CALL (n) {
+        CALL (n) {'{'}
             OPTIONAL MATCH (n)-[r]->()
             RETURN r
-        }
+        {'}'}
         RETURN n, collect(r) as relations
         """)
 
@@ -157,12 +162,48 @@ class CipherApi:
             res.append(CipherTools.collect_arc(record))
         return res
 
-    def __get_sons_node_func(self, session, node_uri):
-        result = session.run()
+    def __get_parent_nodes_func(self, session, node_uri:str, arc_label: str):
+        if arc_label != "":
+            arc_label = ":" + arc_label
+        result = session.run(f"""
+        OPTIONAL MATCH (n)-[{arc_label}]->(t)
+        WHERE n.uri = \"{node_uri}\"
+        RETURN collect(t) as nodes
+        
+""")
 
-    def __create_node_func(self, session, labels: List[str], props:dict):
+        data = result.single()
+        if data is None:
+            return []
+        nodes = data["nodes"]
+        res = []
+        for record in nodes:
+            res.append(CipherTools.collect_node(record))
+        return res
+
+    def __get_sons_node_func(self, session, node_uri, arc_label:str):
+        if arc_label != "":
+            arc_label = ":" + arc_label
+        result = session.run(f"""
+        OPTIONAL MATCH (n)<-[{arc_label}]-(t)
+        WHERE n.uri = \"{node_uri}\"
+        RETURN collect(t) as nodes
+        """)
+
+        data = result.single()
+        if data is None:
+            return []
+        nodes = data["nodes"]
+        res = []
+        for record in nodes:
+            res.append(CipherTools.collect_node(record))
+        return res
+
+    def __create_node_func(self, session, labels: List[str], props:dict, add_uri_to_labels:bool):
         uri = CipherTools.generate_random_string()
         props["uri"] = uri
+        if add_uri_to_labels:
+            labels.append(uri)
         label = CipherTools.transform_labels(labels)
         properties = CipherTools.transform_props(props)
         result = session.run(f"""
@@ -246,7 +287,7 @@ class CipherTools:
         if node["description"]:
             description = node["description"]
         label = list(node.labels)
-        return TNode(name, description, label, dict(node))
+        return TNode(name, node["title"], description, label, dict(node))
 
     @staticmethod
     def collect_arc(arc):
@@ -285,3 +326,8 @@ class CipherTools:
         data += "}"
         return data
 
+
+class NoNodeException(Exception):
+    def __init__(self, message):
+        self.message = message
+        super.__init__(message)
