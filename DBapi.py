@@ -19,6 +19,7 @@ class TNode:
         self.label = label
         self.properties = properties
         self.properties.pop("uri")
+        if "description" in properties.keys(): self.properties.pop("description")
 
     def __str__(self):
         return (f'[node_uri = {self.uri},'
@@ -42,6 +43,7 @@ class TArc:
         self.node_uri_to = uri_to
         self.properties = properties
         self.properties.pop("uri")
+        if "description" in properties.keys(): self.properties.pop("description")
 
     def __str__(self):
         return f'[id = {self.id}  uri = {self.uri}  label = {self.label}  node_from = {self.node_uri_from} node_to = {self.node_uri_to}  {self.properties}]'
@@ -89,22 +91,22 @@ class CipherApi:
         return self.__executor(self.__update_node_func, node_uri, params)
 
     def __executor(self, func_to_exec, *args, **kwargs):
-        try:
-            with self.__driver.session() as session:
-                return func_to_exec(session, *args, **kwargs)
-        except Exception as e:
-            print("Query failed:", e)
-        finally:
-            self.__driver.session().close()
+        #try:
+        with self.__driver.session() as session:
+            return func_to_exec(session, *args, **kwargs)
+        #except Exception as e:
+        #    print("Query failed:", e)
+        #finally:
+        #    self.__driver.session().close()
 
     def __get_all_nodes_and_arcs_func(self, session):
         result = session.run("""
         MATCH (n)
         CALL (n) {
-            OPTIONAL MATCH (n)-[r]->()
-            RETURN r
+            OPTIONAL MATCH (n)-[r]->(t)
+            RETURN r, t
         }
-        RETURN n, collect(r) as relations
+        RETURN n, collect(r) as relations, collect(t) as next
         """)
 
         data = list(result)
@@ -112,9 +114,10 @@ class CipherApi:
         for record in data:
             node = CipherTools.collect_node(record["n"])
             arcs = record["relations"]
+            next = record["next"]
             arcs_list = []
-            for arc in list(arcs):
-                arcs_list.append(CipherTools.collect_arc(arc))
+            for arc, next_node in zip(list(arcs), list(next)):
+                arcs_list.append(CipherTools.collect_arc(arc, node.uri, next_node["uri"]))
             res.append((node, arcs_list))
         return res
 
@@ -124,16 +127,22 @@ class CipherApi:
         result = session.run(f"""
         MATCH (n{label})
         CALL (n) {'{'}
-            OPTIONAL MATCH (n)-[r]->()
-            RETURN r
+            OPTIONAL MATCH (n)-[r]->(t)
+            RETURN r, t
         {'}'}
-        RETURN n, collect(r) as relations
+        RETURN n, collect(r) as relations, collect(t) as next
         """)
 
         data = list(result)
         res = []
         for record in data:
-            res.append(CipherTools.collect_node(record["n"]))
+            node = CipherTools.collect_node(record["n"])
+            arcs = list(record["relations"])
+            next = list(record["next"])
+            arcs_list = []
+            for arc, next_node in zip(arcs, next):
+                arcs_list.append(CipherTools.collect_arc(arc, node.uri, next_node["uri"]))
+            res.append((node, arcs_list))
         return res
 
     def __get_node_by_uri_func(self, session, uri:str):
@@ -149,17 +158,16 @@ class CipherApi:
 
     def __get_node_arcs_func(self, session, node_uri:str):
         result = session.run(f"""
-        OPTIONAL MATCH (n)-[l]-()
+        OPTIONAL MATCH (n)-[l]-(t)
         WHERE n.uri = \"{node_uri}\"
-        RETURN collect(l) as arcs
+        RETURN l, t
 """)
-        data = result.single()
+        data = list(result)
         if data is None:
             return []
-        arcs = data["arcs"]
         res = []
-        for record in arcs:
-            res.append(CipherTools.collect_arc(record))
+        for record in data:
+            res.append(CipherTools.collect_arc(record["l"], node_uri, record["t"]["uri"]))
         return res
 
     def __get_parent_nodes_func(self, session, node_uri:str, arc_label: str):
@@ -230,7 +238,7 @@ class CipherApi:
         data = result.single()
         if data is None:
             return None
-        return CipherTools.collect_arc(data["l"])
+        return CipherTools.collect_arc(data["l"], uri_from, uri_to)
 
     def __delete_node_by_uri_func(self, session, node_uri):
 
@@ -290,13 +298,10 @@ class CipherTools:
         return TNode(name, node["title"], description, label, dict(node))
 
     @staticmethod
-    def collect_arc(arc):
+    def collect_arc(arc, uri_from, uri_to):
         id = arc.id
         uri = arc["uri"]
-        nodes = arc.nodes
         label = arc.type
-        uri_from = nodes[0].element_id
-        uri_to = nodes[1].element_id
         return TArc(id, uri, label, uri_from, uri_to, dict(arc))
 
 
