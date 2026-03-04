@@ -1,6 +1,4 @@
-from argparse import ArgumentError
-from inspect import signature
-from typing import List
+from typing import List, Dict
 
 from DBapi import CipherApi, NoNodeException
 
@@ -94,7 +92,6 @@ class OntologyDriver:
         for subclass in self.__driver.get_sons_nodes(class_uri, "subclass"):
             self.__delete_datatypeProperty_from_class(subclass.uri, title)
 
-
     def add_class_object_attribute(self, class_uri: str, attr_name: str, range_class_uri: str):
         property = self.__driver.create_node(["ObjectProperty"], {"title":attr_name})
         self.__driver.create_arc(property.uri, class_uri, ["ObjectProperty_domain"], {})
@@ -119,22 +116,28 @@ class OntologyDriver:
         arc = self.__driver.create_arc(target_uri, parent_uri, ["subclass"], {})
         return arc
 
-
     def get_object(self, object_uri:str):
         return self.__driver.get_node_by_uri(object_uri), self.__driver.get_node_arcs(object_uri)
 
     def delete_object(self, object_uri:str):
         return self.__driver.delete_node_by_uri(object_uri)
 
-    def create_object(self, class_uri:str):
+    def create_object(self, class_uri:str, datatypes: Dict[str, object], objectTypes: Dict[str, (int, str, str)]):
         node = self.__driver.create_node(["Object", class_uri], {}, True)
         arc = self.__driver.create_arc(node.uri, class_uri, ["object"], {})
+        for key, value in datatypes.items():
+            self.update_object_datatypeProperty(node.uri, key, value)
+
+        for key, value in objectTypes.items():
+            if value[0] == 1:
+                self.update_object_objectProperty(node.uri, key, value[1], value[2])
+            else:
+                self.update_object_objectProperty(value[2], key, value[1], node.uri)
+
         return node, self.collect_signature(class_uri)
 
     def update_object_description(self, node_uri:str, description:str):
         self.__driver.update_node(node_uri, {"description": description})
-
-
 
     def update_object_datatypeProperty(self, node_uri, title, value):
         object_node = self.__driver.get_node_by_uri(node_uri)
@@ -169,7 +172,6 @@ class OntologyDriver:
 
         self.__driver.create_arc(node_uri, range_uri, [title], {})
 
-
     def collect_signature(self, class_uri:str):
         datatypes = []
         objecttypes = []
@@ -187,5 +189,3 @@ class OntologyDriver:
             range_title = self.__driver.get_parent_nodes(objectType.uri, "Property_range")[0].title
             objecttypes.append((arc_title, range_title))
         return datatypes, objecttypes
-
-
