@@ -11,7 +11,7 @@ class EmbeddingsWorker:
     def __init__(self):
         self.model = SentenceTransformer('sentence-transformers/paraphrase-multilingual-mpnet-base-v2')
 
-    def get_chunks(self, text:str, seps:str="!.?;"):
+    def get_chunks(self, text:str, seps:str="!.?;\n"):
         pattern = f'[{re.escape(seps)}]'
         return re.split(pattern, text)
 

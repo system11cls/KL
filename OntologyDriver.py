@@ -49,8 +49,8 @@ class OntologyDriver:
         result = self.__driver.update_node(class_uri, params)
         return result
 
-    def create_class(self, title:str, description:str="", parents_uri:List[str]=[]):
-        node = self.__driver.create_node(["Class"], {"title":title, "description":description}, True)
+    def create_class(self, title:str, description:str="", parents_uri:List[str]=[], uri=None):
+        node = self.__driver.create_node(["Class"], {"title":title, "description":description}, True, uri)
         for parent in parents_uri:
             self.__driver.create_arc(node.uri, parent, ["subclass"], {})
         return node
@@ -74,8 +74,8 @@ class OntologyDriver:
 
         self.__driver.delete_node_by_uri(class_uri)
 
-    def add_class_attribute(self, class_uri:str, title:str):
-        dataType = self.__driver.create_node(["DatatypeProperty"], {"title":title})
+    def add_class_attribute(self, class_uri:str, title:str, uri=None):
+        dataType = self.__driver.create_node(["DatatypeProperty"], {"title":title}, uri)
         self.__driver.create_arc(dataType.uri, class_uri, ["Property_domain"], {})
 
     def delete_class_attribute(self, datatype_uri):
@@ -92,8 +92,8 @@ class OntologyDriver:
         for subclass in self.__driver.get_sons_nodes(class_uri, "subclass"):
             self.__delete_datatypeProperty_from_class(subclass.uri, title)
 
-    def add_class_object_attribute(self, class_uri: str, attr_name: str, range_class_uri: str):
-        property = self.__driver.create_node(["ObjectProperty"], {"title":attr_name})
+    def add_class_object_attribute(self, class_uri: str, attr_name: str, range_class_uri: str, uri:str = None):
+        property = self.__driver.create_node(["ObjectProperty"], {"title":attr_name}, uri=uri)
         self.__driver.create_arc(property.uri, class_uri, ["ObjectProperty_domain"], {})
         self.__driver.create_arc(property.uri, range_class_uri, ["Property_range"], {})
 
@@ -113,7 +113,7 @@ class OntologyDriver:
             self.__delete_objectProperty_from_class(subclass.uri, title)
 
     def add_class_parent(self, parent_uri: str, target_uri: str):
-        arc = self.__driver.create_arc(target_uri, parent_uri, ["subclass"], {})
+        arc = self.__driver.create_arc(parent_uri, target_uri, ["subclass"], {})
         return arc
 
     def get_object(self, object_uri:str):
@@ -122,8 +122,8 @@ class OntologyDriver:
     def delete_object(self, object_uri:str):
         return self.__driver.delete_node_by_uri(object_uri)
 
-    def create_object(self, class_uri:str, datatypes: Dict[str, object], objectTypes: Dict[str, (int, str, str)]):
-        node = self.__driver.create_node(["Object", class_uri], {}, True)
+    def create_object(self, class_uri:str, datatypes: Dict[str, object], objectTypes: Dict[str, (int, str, str)], uri=None):
+        node = self.__driver.create_node(["Object", class_uri], {}, True, uri=uri)
         arc = self.__driver.create_arc(node.uri, class_uri, ["object"], {})
         for key, value in datatypes.items():
             self.update_object_datatypeProperty(node.uri, key, value)
@@ -143,7 +143,7 @@ class OntologyDriver:
         object_node = self.__driver.get_node_by_uri(node_uri)
         class_uri = self.__get_class_uri_by_object(object_node)
         dataTypes, _ = self.collect_signature(class_uri)
-        if not (title in dataTypes):
+        if not (title in dataTypes) and title != "title" and title != "description":
             raise Exception(f"title \"{title}\" is not in list of dataProperties")
 
         self.__driver.update_node(node_uri, {title: value})
@@ -158,17 +158,13 @@ class OntologyDriver:
         class_uri = self.__get_class_uri_by_object(object_node)
         _, objecttypes = self.collect_signature(class_uri)
         if not((title, range_title) in objecttypes):
-            raise Exception("title or/and range_title is not in list of properties")
+            raise Exception(f"title or/and range_title {(title, range_title)} is not in list of properties of {object_node.title}")
 
         range_node = self.__driver.get_node_by_uri(range_uri)
         if range_node is None:
             raise NoNodeException("No range node")
-        range_class_uri = self.__get_class_uri_by_object(range_node)
-        range_class_node = self.__driver.get_node_by_uri(range_class_uri)
         if not("Object" in range_node.label):
             raise Exception("range node is not an object")
-        elif range_class_node.title != range_title:
-            raise Exception(f"range {range_node.title} node is node suitable title")
 
         self.__driver.create_arc(node_uri, range_uri, [title], {})
 

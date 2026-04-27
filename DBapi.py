@@ -27,6 +27,12 @@ class TNode:
                 f'  node_labels = {self.label},'
                 f'  {self.properties}]')
 
+    def make_message(self):
+        res = f'title: {self.title}\ndescription: {self.description}\n'
+        for key, value in self.properties.items():
+            res += f'{key}: {value}\n'
+        return res
+
 class TArc:
     id: int
     uri: str
@@ -47,6 +53,9 @@ class TArc:
 
     def __str__(self):
         return f'[id = {self.id}  uri = {self.uri}  label = {self.label}  node_from = {self.node_uri_from} node_to = {self.node_uri_to}  {self.properties}]'
+
+    def make_message(self, range_title:str):
+        return f'{self.label}: {range_title}\n'
 
 
 class CipherApi:
@@ -75,8 +84,8 @@ class CipherApi:
     def get_sons_nodes(self, node_uri:str, arc_label:str="") -> List[TNode]:
         return self.__executor(self.__get_sons_node_func, node_uri, arc_label)
 
-    def create_node(self, labels: List[str], props:dict, add_uri_to_labels:bool=False) -> TNode:
-        return self.__executor(self.__create_node_func, labels, props, add_uri_to_labels)
+    def create_node(self, labels: List[str], props:dict, add_uri_to_labels:bool=False, uri:str =None) -> TNode:
+        return self.__executor(self.__create_node_func, labels, props, add_uri_to_labels, uri)
 
     def create_arc(self, uri_from:str, uri_to:str, labels: List[str], props:dict) -> TArc:
         return self.__executor(self.__create_arc_func, uri_from, uri_to, labels, props)
@@ -106,7 +115,11 @@ class CipherApi:
             OPTIONAL MATCH (n)-[r]->(t)
             RETURN r, t
         }
-        RETURN n, collect(r) as relations, collect(t) as next
+        CALL (n) {
+            OPTIONAL MATCH (n)<-[k]-(p)
+            RETURN k, p
+        }
+        RETURN n, collect(r) as relations, collect(t) as next, collect(k) as relations_from, collect(p) as from
         """)
 
         data = list(result)
@@ -118,6 +131,10 @@ class CipherApi:
             arcs_list = []
             for arc, next_node in zip(list(arcs), list(next)):
                 arcs_list.append(CipherTools.collect_arc(arc, node.uri, next_node["uri"]))
+            arcs = record["relations_from"]
+            next = record["from"]
+            for arc, next_node in zip(list(arcs), list(next)):
+                arcs_list.append(CipherTools.collect_arc(arc, next_node["uri"],  node.uri))
             res.append((node, arcs_list))
         return res
 
@@ -207,8 +224,9 @@ class CipherApi:
             res.append(CipherTools.collect_node(record))
         return res
 
-    def __create_node_func(self, session, labels: List[str], props:dict, add_uri_to_labels:bool):
-        uri = CipherTools.generate_random_string()
+    def __create_node_func(self, session, labels: List[str], props:dict, add_uri_to_labels:bool, uri:str = None):
+        if uri is None:
+            uri = CipherTools.generate_random_string()
         props["uri"] = uri
         if add_uri_to_labels:
             labels.append(uri)
@@ -266,7 +284,7 @@ class CipherApi:
 
         pairs = []
         for key, value in params.items():
-            pairs.append(f'n.{key}="{value}"')
+            pairs.append(f'n.{key.split('/')[0].replace(" ", "_")}="{CipherTools.changeCov(value)}"')
         properties = ", ".join(pairs)
 
 
@@ -330,6 +348,10 @@ class CipherTools:
         data = data[:-1]
         data += "}"
         return data
+
+    @staticmethod
+    def changeCov(string:str = ""):
+        return string.replace("\"", "\'")
 
 
 class NoNodeException(Exception):
