@@ -1,6 +1,6 @@
 from statistics import mean
 
-from ollama import chat
+from openai import OpenAI
 from typing import List, Tuple
 
 from DBapi import TNode, TArc
@@ -16,6 +16,10 @@ class RAG:
         self.__driver = OntologyDriver(self.__host, self.__user, self.__password)
         self.__embeddings = EmbeddingsWorker()
         self.__data = self.__init_data(self.__driver.get_ontology())
+        self.__model = OpenAI(
+            api_key="sk-224b58307e77aa8e8dde5f434bd0509fa5e06a62d9ab3d52120a1a8c73ad65df",
+            base_url="https://gatellm.ru/v1"
+        )
 
 
     def __init_data(self, ontology: List[Tuple[TNode, List[TArc]]]):
@@ -28,16 +32,16 @@ class RAG:
             curMessage = node.make_message()
             for arc in arcs:
                 curMessage += arc.make_message(res[arc.node_uri_to][0].title)
-            res[node.uri].append(curMessage)
+            res[node.uri].append(f'[\n{curMessage}\n]\n')
             res[node.uri].append(self.__embeddings.get_embeddings(self.__embeddings.get_chunks(curMessage)))
 
 
         return res
 
 
-    def __add_messages(self, res:set[str], question:str, tolerance:float = 0.5):
+    def __add_messages(self, res:set[str], question:str, tolerance):
         sentences = self.__embeddings.get_chunks(question)
-        sentences_emb = self.__embeddings.get_embeddings(sentences)
+        sentences_emb = self.__embeddings.get_embeddings([sentence for sentence in sentences if sentence != ""])
         for _, node in self.__data.items():
             if node[2] in res:
                 continue
@@ -45,22 +49,24 @@ class RAG:
                 if node[2] in res:
                     break
                 for emb in node[3]:
-                    if (self.__embeddings.сos_compare(sentence_emb, emb) >= tolerance):
+                    res_prob = self.__embeddings.сos_compare(sentence_emb, emb)
+                    if (res_prob >= tolerance):
                         res.add(node[2])
                         break
 
     def __get_answer(self, text, question):
         messages = [
-            {"role": "system", "content": f"Текст: {text}"},
-            {"role": "user", "content": f"Дай ответ на данный вопрос, используя информацию из текста: {question}"},
+            {"role": "user", "content": f"Дай ответ на данный вопрос, используя информацию из текста: {question}\n"
+                                        f"Текст: {text}"},
         ]
 
-        response = chat(
-            model='lakomoor/vikhr-llama-3.2-1b-instruct:q3_k_m',
+        response = self.__model.chat.completions.create(
+            model="deepseek/deepseek-v3.2",
             messages=messages,
+            max_tokens=1024
         )
 
-        return response.message.content
+        return response.choices[0].message.content
 
 
     def get_answer(self, question:str, tolerance:float = 0.6):
