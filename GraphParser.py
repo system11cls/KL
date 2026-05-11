@@ -1,4 +1,5 @@
 import json
+import os
 
 from OntologyDriver import OntologyDriver
 
@@ -96,27 +97,93 @@ def parse():
             else:
                 setObjectTypeProperty(edge)
 
+def get_distance(first_mention, second_mention):
+    first_mention_mean = (first_mention["pos_start"] + first_mention["pos_end"]) // 2
+    second_mention_mean = (second_mention["pos_start"] + second_mention["pos_end"]) // 2
+    return abs(first_mention_mean - second_mention_mean)
 
+def find_closest_connection(node, connection):
+    node_mention = node["text_mentions"][0]
 
-if __name__ == "__main__":
+    min_distance = -1
+    cur_min_mention = None
+    for conn_mention in connection["text_mentions"]:
+        if cur_min_mention is None or min_distance > get_distance(node_mention, conn_mention):
+            min_distance = get_distance(node_mention, conn_mention)
+            cur_min_mention = conn_mention
+
+    return cur_min_mention
+
+def add_text_from_mention(mention, textIds, isEnd = False):
+    text = ""
+    for id in range(mention["pos_start"], mention["pos_end"] + 1):
+        text += textIds[str(id)]
+        if not(isEnd and id == mention["pos_end"]):
+            text += " "
+    return text
+
+def parse_file_of_text(file):
+    text_entities = {}
+
+    with open(file, "r", encoding="utf-8") as f:
+        data = json.load(f)
+        textIds = data["textWithIds"]
+
+        for entity in data["entites"]:
+            text_mentions = [mention for mention in entity["node"]["data"]["text_mentions"] if mention["markup"] == entity["markup"]]
+            node_uri = entity["node_uri"].split("/")[-1]
+            inTexts = [f'[{add_text_from_mention(mention, textIds, True)}]' for  mention in text_mentions]
+            text_entities[entity["id"]] = {"text_mentions": text_mentions, "uri": node_uri, "inTextTriplets": [], "inText": inTexts}
+
+        for relation in data["relations"]:
+            startNode = text_entities[relation["start"]]
+            endNode = text_entities[relation["end"]]
+            connection = text_entities[relation["connection"]]
+
+            min_mention = find_closest_connection(endNode, connection)
+
+            relation_text = "{"
+            relation_text += add_text_from_mention(startNode["text_mentions"][0], textIds)
+            relation_text += add_text_from_mention(min_mention, textIds)
+            relation_text += add_text_from_mention(endNode["text_mentions"][0], textIds, True)
+            relation_text += "}"
+
+            startNode["inTextTriplets"].append(relation_text)
+            endNode["inTextTriplets"].append(relation_text)
+
+    return text_entities
+
+def parse_main(driver):
     data = parse()
-    driver = OntologyDriver("neo4j://localhost:7687", "neo4j", password="08112004")
+
+    print("main file parsed")
+
     for _, tclass in classes.items():
         driver.create_class(tclass["name"], tclass["description"], [], uri=tclass["uri"])
+
+    print("classes added")
 
     for _, tclass in classes.items():
         if "parent" in tclass:
             for parent in tclass["parent"]:
                 driver.add_class_parent(tclass["uri"], parent)
 
+    print("classes parents added")
+
     for _, tData in datatypes_id_to_name.items():
         driver.add_class_attribute(tData["class"], tData["name"])
+
+    print("classes attributes added")
 
     for _, property in objectTypes.items():
         driver.add_class_object_attribute(property["domain"], property["name"], property["range"])
 
+    print("classes object attributes added")
+
     for _, tobject in objects.items():
         driver.create_object(tobject["parent"], {"title": tobject["name"], "description": tobject["description"]}, {}, tobject["uri"])
+
+    print("classes objects added")
 
     for _, tobject in objects.items():
         for key, param in tobject.items():
@@ -128,5 +195,24 @@ if __name__ == "__main__":
                     driver.update_object_datatypeProperty(tobject["uri"], datatypes_id_to_name[prop_uri]["name"], param)
                 elif prop_uri in objectTypes:
                     driver.update_object_objectProperty(tobject["uri"], objectTypes[prop_uri]["name"], classes[objectTypes[prop_uri]["range"]]["name"], param)
+
+    print("objects attributes added")
+
+def update_objects_with_mentions(driver, file):
+    file_data = parse_file_of_text(file)
+    print(f'file {file} parsed')
+    for _, entity in file_data.items():
+        if entity["uri"] in objects:
+            driver.update_object_datatypeProperty(entity["uri"], "inText", str(entity["inText"]))
+            driver.update_object_datatypeProperty(entity["uri"], "inTextTriplets", str(entity["inTextTriplets"]))
+
+    print("mentions added")
+
+
+if __name__ == "__main__":
+    driver = OntologyDriver("neo4j://localhost:7687", "neo4j", password="08112004")
+    parse_main(driver)
+    for f in os.listdir("texts"):
+        update_objects_with_mentions(driver, os.path.join("texts", f))
 
 

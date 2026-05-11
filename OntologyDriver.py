@@ -143,7 +143,7 @@ class OntologyDriver:
         object_node = self.__driver.get_node_by_uri(node_uri)
         class_uri = self.__get_class_uri_by_object(object_node)
         dataTypes, _ = self.collect_signature(class_uri)
-        if not (title in dataTypes) and title != "title" and title != "description":
+        if not (title in dataTypes) and title != "title" and title != "description" and title != "inText" and title != "inTextTriplets":
             raise Exception(f"title \"{title}\" is not in list of dataProperties")
 
         self.__driver.update_node(node_uri, {title: value})

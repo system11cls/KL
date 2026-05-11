@@ -69,7 +69,7 @@ class RAG:
         return response.choices[0].message.content
 
 
-    def get_answer(self, question:str, tolerance:float = 0.6):
+    def get_answer(self, question:str, tolerance:float = 0.75):
 
         res = set()
         self.__add_messages(res, question, tolerance)

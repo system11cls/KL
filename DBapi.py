@@ -1,8 +1,11 @@
 import json
+from re import findall
+
 from neo4j import GraphDatabase
 from string import ascii_lowercase, digits
 from random import choice
 from typing import List, Tuple
+import re
 
 class TNode:
     uri:str
@@ -30,7 +33,16 @@ class TNode:
     def make_message(self):
         res = f'title: {self.title}\ndescription: {self.description}\n'
         for key, value in self.properties.items():
-            res += f'{key}: {value}\n'
+            if key == "inText":
+                result = re.findall(r"'([^']*)'", value)
+                for item in result:
+                    res += f'{item}\n'
+            elif key == "inTextTriplets":
+                result = re.findall(r'\{([^}]*)}', value)
+                for item in result:
+                    res += f'{item}\n'
+            else:
+                res += f'{key}: {value}\n'
         return res
 
 class TArc:
