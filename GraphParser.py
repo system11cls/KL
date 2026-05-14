@@ -4,7 +4,7 @@ from typing import Set
 
 from OntologyDriver import OntologyDriver
 
-cnt_sentences_windows = 2
+cnt_sentences_windows = 1
 
 classes = {}
 objects = {}
@@ -120,11 +120,16 @@ def find_closest_connection(node, connection):
 def find_lower_sentence_start(mention, textIds):
     cnt = 0
     curPos = mention["pos_start"]
-    while curPos % 100 != 0:
-        if any(ch in textIds[curPos] for ch in "!.?;\n"):
+    while curPos != -1:
+        if not(str(curPos) in textIds):
+            curPos -= 1
+            continue
+
+        if set(textIds[str(curPos)]) & set("!.?;\n"):
             if cnt >= cnt_sentences_windows:
                 curPos += 1
                 return curPos
+            cnt += 1
         curPos -= 1
 
     return curPos
@@ -132,22 +137,42 @@ def find_lower_sentence_start(mention, textIds):
 def find_upper_sentence_end(mention, textIds):
     cnt = 0
     curPos = mention["pos_start"]
-    while curPos % 100 != 0 and curPos in textIds:
-        if any(ch in textIds[curPos] for ch in "!.?;\n"):
+    while True:
+        if not(str(curPos) in textIds):
+            curPos = (curPos // 1000 + 1) * (1000)
+            if not(str(curPos) in textIds):
+                break
+            continue
+
+        if set(textIds[str(curPos)]) & set("!.?;\n"):
             if cnt >= cnt_sentences_windows + 1:
                 return curPos
+            cnt += 1
         curPos += 1
 
     return curPos - 1
 
 
-def add_text_from_mention(mention, textIds, setOfSentences: Set[str], isEnd = False):
+def add_text_from_mention(mention, textIds, setOfSentences: Set[str]):
     text = ""
-    for id in range(find_lower_sentence_start(mention, textIds), find_upper_sentence_end(mention, textIds) + 1):
+    start = find_lower_sentence_start(mention, textIds)
+    end = find_upper_sentence_end(mention, textIds) + 1
+    for id in range(start, end):
+        if not(str(id) in textIds):
+            continue
         text += textIds[str(id)]
-        if not(isEnd and id == mention["pos_end"]):
+        if not(id == end - 1):
             text += " "
     setOfSentences.add(text)
+
+def add_text_by_pos(mention, textIds):
+    text = ""
+    for id in range(mention["pos_start"], mention["pos_end"] + 1):
+        text += textIds[str(id)]
+        if id != mention["pos_end"]:
+            text += " "
+    return text
+
 
 def parse_file_of_text(file):
     text_entities = {}
@@ -159,7 +184,7 @@ def parse_file_of_text(file):
         for entity in data["entites"]:
             text_mentions = [mention for mention in entity["node"]["data"]["text_mentions"] if mention["markup"] == entity["markup"]]
             node_uri = entity["node_uri"].split("/")[-1]
-            inTexts = [f'[{add_text_from_mention(mention, textIds, True)}]' for  mention in text_mentions]
+            inTexts = [f'[{add_text_by_pos(mention, textIds)}]' for  mention in text_mentions]
             text_entities[entity["id"]] = {"text_mentions": text_mentions, "uri": node_uri, "inTextTriplets": [], "inText": inTexts}
 
         for relation in data["relations"]:
@@ -171,9 +196,9 @@ def parse_file_of_text(file):
 
             sentences = set()
 
-            relation_text += add_text_from_mention(startNode["text_mentions"][0], textIds, sentences)
-            relation_text += add_text_from_mention(min_mention, textIds, sentences)
-            relation_text += add_text_from_mention(endNode["text_mentions"][0], textIds, sentences, True,)
+            add_text_from_mention(startNode["text_mentions"][0], textIds, sentences)
+            add_text_from_mention(min_mention, textIds, sentences)
+            add_text_from_mention(endNode["text_mentions"][0], textIds, sentences)
 
             relation_text = "{"
             for sentence in sentences:
