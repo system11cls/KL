@@ -1,7 +1,10 @@
 import json
 import os
+from typing import Set
 
 from OntologyDriver import OntologyDriver
+
+cnt_sentences_windows = 2
 
 classes = {}
 objects = {}
@@ -114,13 +117,37 @@ def find_closest_connection(node, connection):
 
     return cur_min_mention
 
-def add_text_from_mention(mention, textIds, isEnd = False):
+def find_lower_sentence_start(mention, textIds):
+    cnt = 0
+    curPos = mention["pos_start"]
+    while curPos % 100 != 0:
+        if any(ch in textIds[curPos] for ch in "!.?;\n"):
+            if cnt >= cnt_sentences_windows:
+                curPos += 1
+                return curPos
+        curPos -= 1
+
+    return curPos
+
+def find_upper_sentence_end(mention, textIds):
+    cnt = 0
+    curPos = mention["pos_start"]
+    while curPos % 100 != 0 and curPos in textIds:
+        if any(ch in textIds[curPos] for ch in "!.?;\n"):
+            if cnt >= cnt_sentences_windows + 1:
+                return curPos
+        curPos += 1
+
+    return curPos - 1
+
+
+def add_text_from_mention(mention, textIds, setOfSentences: Set[str], isEnd = False):
     text = ""
-    for id in range(mention["pos_start"], mention["pos_end"] + 1):
+    for id in range(find_lower_sentence_start(mention, textIds), find_upper_sentence_end(mention, textIds) + 1):
         text += textIds[str(id)]
         if not(isEnd and id == mention["pos_end"]):
             text += " "
-    return text
+    setOfSentences.add(text)
 
 def parse_file_of_text(file):
     text_entities = {}
@@ -142,10 +169,15 @@ def parse_file_of_text(file):
 
             min_mention = find_closest_connection(endNode, connection)
 
+            sentences = set()
+
+            relation_text += add_text_from_mention(startNode["text_mentions"][0], textIds, sentences)
+            relation_text += add_text_from_mention(min_mention, textIds, sentences)
+            relation_text += add_text_from_mention(endNode["text_mentions"][0], textIds, sentences, True,)
+
             relation_text = "{"
-            relation_text += add_text_from_mention(startNode["text_mentions"][0], textIds)
-            relation_text += add_text_from_mention(min_mention, textIds)
-            relation_text += add_text_from_mention(endNode["text_mentions"][0], textIds, True)
+            for sentence in sentences:
+                relation_text += sentence
             relation_text += "}"
 
             startNode["inTextTriplets"].append(relation_text)
